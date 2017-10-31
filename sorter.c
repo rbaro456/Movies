@@ -6,20 +6,23 @@
 #include <sys/wait.h>
 #include "sorter.h"
 
-/*
+const char * assignment_column_titles[NUM_COLS] = {"color", "director_name", "num_critic_for_reviews", "duration", "director_facebook_likes", "actor_3_facebook_likes", "actor_2_name", "actor_1_facebook_likes", "gross","genres", "actor_1_name", "movie_title", "num_voted_users", "cast_total_facebook_likes", "actor_3_name", "facenumber_in_poster", "plot_keywords", "movie_imdb_link", "num_user_for_reviews", "language", "country", "content_rating", "budget", "title_year", "actor_2_facebook_likes", "imdb_score", "aspect_ratio", "movie_facebook_likes"};
+
+// color,director_name,num_critic_for_reviews,duration,director_facebook_likes,actor_3_facebook_likes,actor_2_name,actor_1_facebook_likes,gross,genres,actor_1_name,movie_title,num_voted_users,cast_total_facebook_likes,actor_3_name,facenumber_in_poster,plot_keywords,movie_imdb_link,num_user_for_reviews,language,country,content_rating,budget,title_year,actor_2_facebook_likes,imdb_score,aspect_ratio,movie_facebook_likes
+
+/* 
 To Do:
 
-- add csv validity checker (now it gets caught in an infinite loop on empty .csv, doesn't check if all rows have same number of fields)
-- program currently prints a 0 in place of fields found empty
-- correct STDOUT output for final submission (done, but will need redoing after extra credit)
 - writeup
 
 
 
 
 Ask professor:
-	wait() was working without include sys/wait.h
-	catch segfault and do what? infinite print
+	- only movie csv? exact titles?
+	- can print watever to stdout? doesn't interfere with required output?
+	- wait() was working without include sys/wait.h
+	- catch segfault and do what? now exits
 
 done:
 - make it scan starting from dirs other than current (it does parse from argv)
@@ -27,6 +30,9 @@ done:
 - check for zombie/orphan processes (ps aux)
 - double check dealloc db (make sure everything is freed, run fsanitize, valgrind)
 - catch segfault, exit on empty file
+- program currently prints a 0 in place of fields found empty
+- add csv validity checker (now it gets caught in an infinite loop on empty .csv, doesn't check if all rows have same number of fields)
+- correct STDOUT output for final submission (done, but will need redoing after extra credit)
 
 */
 
@@ -34,16 +40,18 @@ done:
 
 int main(int argc, char * argv[]){
 	signal(SIGSEGV, segf);
+	int pipefd[2];
+	pipe(pipefd);
 	if(argc<3){
-		printf("\nError: Not enough arguments entered.\nUsage: ./sorter -c <column_name>\n\n");
+		fputs("\nError: Not enough arguments entered.\nUsage: ./sorter -c <column_name>\n\n", stderr);
 		return 0;
 	}
-	///parse args/flags
+	//parse args/flags
 	char *sort_col = "";
-	char *dir_name = ".";	///default to current dir
-	char *out_dir = "./";  ///default to current dir
+	char *dir_name = ".";	//default to current dir
+	char *out_dir = "./";  //default to current dir
 	int i;
-	for(i=1; i<argc; i++){  /// Checks the argument flags
+	for(i=1; i<argc; i++){
 		if(argv[i][0] == '-'){
 			switch(argv[i][1]){
 				case 'c':
@@ -66,87 +74,87 @@ int main(int argc, char * argv[]){
 		}
 	}
 
-
-	return process_dir(dir_name, sort_col, out_dir);  /// process the directories
-
+	
+	return process_dir(dir_name, sort_col, out_dir);
+	
 }
 
 int process_dir(char *dirname, char *sort_col, char *out_dir){
-
-	char *dir_name = (char*)malloc(100*sizeof(char)); ///will append to this to send to recursion
+	
+	char *dir_name = (char*)malloc(100*sizeof(char)); //will append to this to send to recursion
 	int child_processes = 0;
-	int *children_PIDS = (int*)malloc(255*sizeof(int));  /// int array of child processes
-	int *cur_childpid = children_PIDS;  /// holds the current child process
+	int *children_PIDS = (int*)malloc(255*sizeof(int));
+	int *cur_childpid = children_PIDS;
 	int PID = 0;
 	strcpy(dir_name, dirname);
-	strcat(dir_name, "/");  /// adds a slash to directory so it could be opened
-	DIR *d = opendir(dirname);  /// opens directory
-	struct dirent *dir_item = readdir(d);  /// reads first file in directory
+	strcat(dir_name, "/");
+	DIR *d = opendir(dirname);
+	struct dirent *dir_item = readdir(d);
 // 	printf("dirname: %s\n", dirname);
 	while (dir_item){
 // 		if(strcmp(dir_item->d_name,".")==0) printf("this dir:\n");
 // 		else if (strcmp(dir_item->d_name, "..")==0) printf("prev dir:\n");
 // 		printf("In dir: %s dir_item: %s \n", dirname, dir_item->d_name);
-		if(strcmp(dir_item->d_name,".")!=0 && strcmp(dir_item->d_name, "..")!=0 && dir_item->d_type==4){  /// checks if it is a directory
+		if(strcmp(dir_item->d_name,".")!=0 && strcmp(dir_item->d_name, "..")!=0 && dir_item->d_type==4){
 // 			printf("Found dir: %s in dir: %s, forking process\n", dir_item->d_name, dir_name);
-			strcat(dir_name, dir_item->d_name);  ///append the file name to path
+			strcat(dir_name, dir_item->d_name);
 // 			printf("calling with dir_name: %s\n", dir_name);
 			PID = fork();
-			if(!PID){  /// If it is child
+			if(!PID){ //child
 // 				printf("child calling process dir with dir_name: %s\n", dir_name);
-				//children_PIDS = (int*)malloc(255*sizeof(int));
-				//cur_childpid = children_PIDS;
-				process_dir(dir_name, sort_col, out_dir);  /// Process the next directory
+// 				children_PIDS = (int*)malloc(255*sizeof(int));
+// 				cur_childpid = children_PIDS;
+				process_dir(dir_name, sort_col, out_dir);
 // 				printf("child exiting\n");
 				_exit(0);
-			}else{  /// If it is parent
-// 				if(child_processes==0)
+			}else{ //parent
+// 				if(child_processes==0) 
 // 					printf("Initial PID: %d\nPIDS of all child processes: ", getpid());
 // 				else
 // 					printf(",");
-				child_processes++;  /// increment child by 1 because parent has a new child
+				child_processes++;
 // 				printf("CHILD PID: %d\n", PID);
-				*(cur_childpid++) = PID; /// Saving the pid of child in the array
+				*(cur_childpid++) = PID;
 			}
 		}
 		if(dir_item->d_name[strlen(dir_item->d_name)-4]=='.' && dir_item->d_name[strlen(dir_item->d_name)-3]=='c' && dir_item->d_name[strlen(dir_item->d_name)-2]=='s' && dir_item->d_name[strlen(dir_item->d_name)-1]=='v'){
 // 			printf("Found .csv!\n");
 			PID = fork();
-			if(!PID){  /// If it is child
-// 				printf("child forking process SORT on %s\n", dir_item->d_name);
+			if(!PID){ //child
+// 				printf("child forking process SORT on %s\n", dir_item->d_name); 
 				strcat(dir_name, dir_item->d_name);
-				sort_csv(dir_name, dir_item->d_name, sort_col, out_dir);  /// sorts the csv
-			//	child_processes++;  /// increment child by 1 because parent has a new child
+				sort_csv(dir_name, dir_item->d_name, sort_col, out_dir);
+// 				child_processes++;
 // 				printf("child exiting\n");
-				_exit(0);   /// ends child process
-			}else{  /// if it is parent
-// 				if(child_processes==0)
+				_exit(0);
+			}else{ //parent
+// 				if(child_processes==0) 
 // 					printf("Initial PID: %d\nPIDS of all child processes: ", getpid());
 // 				else
 // 					printf(",");
-				child_processes++; /// increment child by 1 because parent has a new child
+				child_processes++;
 // 				printf("Child PID: %d\n", PID);
-				*(cur_childpid++) = PID;  /// Saving the pid of child in the array
+				*(cur_childpid++) = PID;
 			}
 		}
-	strcpy(dir_name, dirname);  /// hold the directory names
-	strcat(dir_name, "/");
-	dir_item = readdir(d);  /// reads next file in directory
-
+		strcpy(dir_name, dirname);
+		strcat(dir_name, "/");
+		dir_item = readdir(d);
+		
 	}
 // 	printf("--Done with dir: %s\n", dirname);
-	closedir(d);  /// close the directory
-
+	closedir(d);
+	
 // 	printf("144 Child Processes: %d\n", child_processes);
 	int i;
-	for(i=0; i<child_processes; i++){  /// waits for the child processes
+	for(i=0; i<child_processes; i++){
 		wait(NULL);
 // 		printf("Child exited\n");
 	}
 	printf("Initial PID: %d\nPIDS of all child processes: ", getpid());
 	if(child_processes>0){
 		cur_childpid = children_PIDS;
-		for(i=0; i<child_processes-1; i++){  /// Prints out all the child pids
+		for(i=0; i<child_processes-1; i++){
 			printf("%d,", *cur_childpid++);
 		}
 		printf("%d\n", *cur_childpid);
@@ -158,20 +166,22 @@ int process_dir(char *dirname, char *sort_col, char *out_dir){
 }
 
 int sort_csv(char *file_path, char *filename, char *sort_col, char *out_dir){
-
+	
 // 	printf("\n\n");
+	printf("Initial PID: %d\nPIDS of all child processes: \nTotal number of processes: 0\n", getpid());
 	FILE *fp = fopen(file_path, "r");
 	Db *db = make_new_db();
 	read_in_cols(db, fp);
-	populate_db(db, fp);
 // 	printf("Sorting file %s\n", filename);
+	int assert = assert_cols(db);
 	int col_num = determine_sort_col(db, sort_col);
 	if(col_num == -1){
 // 		printf("Specified column not present.\n");
 		return 0; // change to exit when forking
-	}else{
+// 	}else{
 // 		printf("Specified column is index %d.\n", col_num);
 	}
+	populate_db(db, fp);
 // 	printf("sort_csv: sort_col %s is %d\n", sort_col, col_num);
 	//clear db, set all cell pointers to NULL
 // 	print_db(STDOUT, db);
@@ -179,7 +189,7 @@ int sort_csv(char *file_path, char *filename, char *sort_col, char *out_dir){
 	my_mergesort(db, col_num, db->column_types[col_num], 0, db->num_rows-1);
 // 	print_db(STDOUT, db);
 // 	printf("sorted\n");
-
+	
 	//create output filename
 	char *postpend = (char*)malloc(strlen("-sorted-")+strlen(sort_col)+50);
 	strcpy(postpend, "-sorted-");
@@ -204,9 +214,9 @@ int sort_csv(char *file_path, char *filename, char *sort_col, char *out_dir){
 		strcat(dest_path, "/");
 // 	printf("DEST_PATH %s\n", dest_path);
 	strcat(dest_path, dest_filename);
-	printf("DEST_PATH %s\n", dest_path);
+// 	printf("DEST_PATH %s\n", dest_path);
 	free(dest_filename);
-
+	
 	//write to output file
 	FILE * fdest = fopen(dest_path, "w");
 // 	write_csv(db, fdest);
@@ -249,6 +259,10 @@ int populate_db(Db *db, FILE* fp){
 							db->num_rows--; //getting rid of return at the end of the file
 							goto Done; //line 113
 						}
+						if(col<db->num_cols-1){ //bad CSV
+							fputs("Error: Row doesn't have enough columns. Bad CSV.\n", stderr);
+							exit(0);
+						}
 						str[i] = '\0';
 // 						printf("76 making new row\n");
 						next++;
@@ -270,9 +284,9 @@ int populate_db(Db *db, FILE* fp){
 							db->entries[row]->items[col].f = num;
 							free(str);
 						}
-						db->entries[row]->types[col]=type;
+						db->entries[row]->types[col]=type;						
 						goto Next_Row;	//go to next row in current entry, line 102
-					}else if(c==',' && !in_quotes){
+					}else if(c==',' && !in_quotes){ 
 						if(type=='s') str[i] = '\0';
 // 						printf("\n\n\n119 making new col\n\n");
 // 						printf(", ");
@@ -307,7 +321,7 @@ int populate_db(Db *db, FILE* fp){
 // 				}else{
 // 					db->column_types[col]=type;
 				}
-
+				
 // 				printf("populate: db->column_types[%d]: %c\n", col, db->column_types[col]);
 				// convert data to correct type
 				if(type=='i'){
@@ -379,8 +393,8 @@ int determine_sort_col(Db* db, char * str){
 
 int read_in_cols(Db *db, FILE* fp){
 	int i,j,o;
-	char c;
-
+	char c = EOF;
+	
 // 	printf("read_in_cols: Reading cols in input...\n");
 	//read column headings from file, populate db->column_titles list
 	for(i=0, o=1; o && i<=MAX_COLS && (c!='\n' && c!='\r'); i++){
@@ -389,9 +403,10 @@ int read_in_cols(Db *db, FILE* fp){
 // 		printf("read_in_cols: db->num_cols:%d\n", db->num_cols);
 		j=0;
 		while((o=fscanf(fp, "%c", &c)) && (c!='\n' && c!='\r')){
-			if(o==-1){
-// 				printf("EMPTY FILE\n");
-				exit(0);
+			if(o<=0 || c==EOF){
+// 				fprintf(stderr, "%c\n", c);
+// 				fputs("Error: EMPTY FILE\n", stderr);
+				_exit(0);
 			}
 // 			printf("READ: NUM COLS: %d\n", db->num_cols);
 			if(c>=65 && c<=90) c+=32; //make char lower case.
@@ -411,8 +426,30 @@ int read_in_cols(Db *db, FILE* fp){
 // 	printf("read_in_cols: col title %d: %s\n", i, db->column_titles[i]);
 	// print_cols();
 // 	printf("read_in_cols: Received %d cols\n", num_cols);
-
+	
 	return 1;
+}
+
+int assert_cols(Db *db){
+	int i;
+	if(db->num_cols != NUM_COLS){
+// 		fprintf(stderr, "Error: PID %d number of Columns %d do not match orignal assignment %d. Continuing sort.\n", getpid(), db->num_cols, NUM_COLS);
+		return 0;
+	}
+	for(i=0; i<NUM_COLS && i<db->num_cols; i++){
+// 		fprintf(stderr, "cmp %s %s %d\n", assignment_column_titles[i], db->column_titles[i], strcmp(assignment_column_titles[i], db->column_titles[i]));
+		if(strcmp(assignment_column_titles[i], db->column_titles[i])){
+// 			fprintf(stderr, "Error: PID %d Columns[%d] do not match orignal assignment. Continuing sort.\n", getpid(), i);
+			return 0;
+		}
+	}
+	if(i==NUM_COLS){
+// 		fprintf(stderr, "Error: PID %d all Columns match orignal assignment. Continuing sort.\n", getpid());
+		return 1;
+	}
+	//should never happen
+// 	fprintf(stderr, "\tError: PID %d still not asserted. Continuing sort.\n", getpid());
+	return 0;
 }
 
 void print_cols(Db *db, FILE* fp){
@@ -446,7 +483,7 @@ void print_rows(Db *db, FILE* fp){
 		print_row(db, db->entries[i], fp);
 		if(i<(db->num_rows)-1) fprintf(fp, "\n");
 	}
-
+	
 	return;
 }
 
@@ -468,15 +505,15 @@ void print_row(Db *db, Entry *row, FILE* fp){	//prints contents of Entry (row) i
 // 			printf("s%c:%s",row->types[i] , *((row->items[i]).s));
 		}
 		++i;
-		if(row->items[i].s==NULL || (i==db->num_cols && row->next==NULL && ++r<db->num_rows))
+		if(row->items[i].s==NULL || (i==db->num_cols && row->next==NULL && ++r<db->num_rows)) 
 // 			fprintf(fp, "\n");
 			;
 // 		else printf(",");
-		else
+		else 
 			fprintf(fp, ",");
 	}
 // 	printf("\r");
-
+	
 	if(row->next){
 		fprintf(fp, "\n");
 		print_row(db, row->next, fp);
@@ -491,17 +528,17 @@ Db* make_new_db(void){
 	db->column_types = (char*)malloc(MAX_COLS*sizeof(char));
 	db->entries = (Entry**)malloc(MAX_DB_SIZE*sizeof(Entry*));
 	db->next = NULL;
-
+	
 	return db;
 }
 
 Entry* make_new_entry(void){
-
+	
 	Entry *entry = (Entry*)malloc(sizeof(Entry));
 	entry->types = (char*)malloc(MAX_COLS);
 	entry->items = (item_ptr*)malloc(MAX_COLS*sizeof(item_ptr));
 	entry->next = NULL;
-
+	
 	return entry;
 }
 
@@ -525,7 +562,7 @@ int dealloc_db(Db *db){
 	}
 	free(db->column_titles);
 	free(db->column_types);
-
+	
 	for(i=0; i<MAX_DB_SIZE && i<db->num_rows; i++){
 // 		for(j=0; j<db->num_cols; j++){//db->size
 // 			printf("i:%d j:%d freeing \n",i,j);
